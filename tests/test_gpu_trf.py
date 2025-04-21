@@ -1,6 +1,6 @@
 import time
-from mtrf.model_gpu import TRF
-from mtrf.stats_gpu import crossval, nested_crossval
+from mtrf.model import TRF
+from mtrf.stats import crossval, nested_crossval
 
 def make_fake_data(n_trials=20, n_samples=500, n_features=8, n_channels=2):
     import numpy as np

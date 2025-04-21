@@ -312,3 +312,60 @@ class TRF:
         else:
             return prediction
     # ... other methods unchanged for now ...
+
+
+def load_sample_data(path=None, n_segments=1, normalize=True):
+    """
+    Load sample of brain responses to naturalistic speech.
+
+    If no path is provided, the data is assumed to be in a folder called mtrf_data
+    in the users home directory and will be downloaded and stored there if it can't
+    be found. The data contains about 2 minutes of brain responses to naturalistic
+    speech, recorded with a 128-channel Biosemi EEG system and the 16-band spectrogram
+    of that speech.
+
+    Parameters
+    ----------
+    path: str or pathlib.Path
+        Destination where the sample data is stored or will be downloaded to. If None
+        (default), a folder called mtrf_data in the users home directory is assumed
+        and created if it does not exist.
+
+    Returns
+    -------
+    stimulus: numpy.ndarray
+        Samples-by-features array of the presented speech's spectrogram.
+    response : numpy.ndarray
+        Samples-by-channels array of the recorded neural response.
+    fs: int
+        Sampling rate of stimulus and response in Hz.
+    """
+    if path is None:  # use default path
+        path = Path.home() / "mtrf_data"
+        if not path.exists():
+            path.mkdir()
+    else:
+        path = Path(path)
+    if not (path / "speech_data.npy").exists():  # download the data
+        url = "https://github.com/powerfulbean/mTRFpy/raw/master/tests/data/speech_data.npy"
+        import requests
+
+        response = requests.get(url, allow_redirects=True)
+        open(path / "speech_data.npy", "wb").write(response.content)
+    data = np.load(str(path / "speech_data.npy"), allow_pickle=True).item()
+    stimulus, response, fs = (
+        data["stimulus"],
+        data["response"],
+        data["samplerate"][0][0],
+    )
+    stimulus = np.array_split(stimulus, n_segments)
+    response = np.array_split(response, n_segments)
+    if normalize:
+        for i in range(len(stimulus)):
+            stimulus[i] = (stimulus[i] - stimulus[i].mean(axis=0)) / stimulus[i].std(
+                axis=0
+            )
+            response[i] = (response[i] - response[i].mean(axis=0)) / response[i].std(
+                axis=0
+            )
+    return stimulus, response, fs
