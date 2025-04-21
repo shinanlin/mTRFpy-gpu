@@ -1,0 +1,21 @@
+# Requirements for mTRF GPU-enabled environment (Python 3.11, CUDA 11.x)
+numpy>=1.24,<2.3
+scipy>=1.6
+mne>=1.9
+joblib>=1.0
+matplotlib>=3.5
+decorator>=4.3
+lazy-loader>=0.1
+pooch>=1.8
+cupy-cuda11x>=13.4
+fastrlock>=0.8
+msgpack>=1.0
+numba>=0.51
+scikit-learn>=1.1
+typing_extensions>=4.1
+cffi>=1.0
+platformdirs>=2.5
+requests>=2.19
+packaging>=25.0
+llvmlite>=0.44
+soundfile>=0.13

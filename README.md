@@ -31,6 +31,26 @@ visualize models. It can also be installed via pip:
     pip install matplotlib
 ```
 
+## Model Implementation Comparison
+
+The core TRF model implementations are located in the `mtrf/` directory. This includes:
+- `model.py`: Unified GPU-accelerated and CPU-compatible TRF implementation (formerly `model_gpu.py`)
+- Supporting utilities for matrix operations and statistics
+
+### Comparison Test Scripts
+Two scripts are provided to compare the outputs, metrics, and weights of the TRF model implementations (CPU and GPU) to ensure correctness and reproducibility:
+
+- `tests/compare_models.py`
+- `tests/trf_compare.py`
+
+**To run the comparison test on a cluster (SLURM/DCC):**
+
+```bash
+sbatch tests/run_compare_models.sh
+```
+
+This will execute one of the comparison scripts and output logs to the `log/` directory. The script prints detailed differences (if any) between the implementations. All results should match up to floating-point precision if the GPU backend is correct.
+
 We also provide an optional interface to MNE-Python so it might be useful to [install mne](https://mne.tools/stable/install/manual_install.html) as well.
 
 # Getting started

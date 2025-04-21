@@ -33,27 +33,38 @@ def neg_mse(y, y_pred):
     return -mse
 
 
-def pearsonr(y, y_pred):
+def pearsonr(y, y_pred, xp=None):
+    print('[CPU] pearsonr: y shape:', y.shape, 'y_pred shape:', y_pred.shape)
+    # Print first 5 values for quick check
+    print('[CPU] pearsonr: y[:5,0]:', y[:5,0] if y.ndim>1 else y[:5], 'y_pred[:5,0]:', y_pred[:5,0] if y_pred.ndim>1 else y_pred[:5])
     """
     Compute Pearson's correlation coefficient between predicted
-    and observed data
+    and observed data. Backend-agnostic (NumPy/CuPy).
 
     Parameters
     ----------
-    y: np.ndarray
+    y: array
         samples-by-features matrix of observed data.
-    y_pred: np.ndarray
+    y_pred: array
         samples-by-features matrix of predicted data.
+    xp: module, optional
+        Array API (numpy or cupy). If None, defaults to numpy.
 
     Returns
     -------
-    r: np.ndarray
+    r: array
         Pearsons r for each feature in y.
     """
-    r = np.mean((y - y.mean(0)) * (y_pred - y_pred.mean(0)), 0) / (
+    if xp is None:
+        import numpy as xp
+    y = xp.asarray(y)
+    y_pred = xp.asarray(y_pred)
+    r = xp.mean((y - y.mean(0)) * (y_pred - y_pred.mean(0)), 0) / (
         y.std(0) * y_pred.std(0)
     )
+    print('[CPU] pearsonr: r:', r)
     return r
+
 
 
 def crossval(
@@ -301,12 +312,16 @@ def _crossval(
     reg_mat_size = x[0].shape[-1] * len(lags) + 1
     regmat = regularization_matrix(reg_mat_size, model.method)
     regmat *= regularization / (1 / fs)
+    print('[CPU] _crossval: regmat shape:', regmat.shape)
+    print('[CPU] _crossval: cov_xx shape:', cov_xx.shape if cov_xx is not None else None)
+    print('[CPU] _crossval: cov_xy shape:', cov_xy.shape if cov_xy is not None else None)
 
     n_trials = len(x)
     k = _check_k(k, n_trials)
     splits = np.arange(n_trials)
     random.shuffle(splits)
     splits = np.array_split(splits, k)
+    print('[CPU] _crossval: splits:', splits)
 
     if average is True:
         metric = np.zeros(k)
@@ -337,10 +352,14 @@ def _crossval(
         # because we are working with covariance matrices, we have to check direction
         # to pass the right variable as stimulus and response to TRF.predict
         if model.direction == 1:
+            print('[CPU] _crossval: Predicting with x_test[0] shape:', x_test[0].shape, 'y_test[0] shape:', y_test[0].shape)
             _, metric_test = trf.predict(x_test, y_test, None, average)
         elif model.direction == -1:
+            print('[CPU] _crossval: Predicting with y_test[0] shape:', y_test[0].shape, 'x_test[0] shape:', x_test[0].shape)
             _, metric_test = trf.predict(y_test, x_test, None, average)
+        print('[CPU] _crossval: metric_test:', metric_test)
         metric[isplit] = metric_test
+    print('[CPU] _crossval: metric mean:', metric.mean(axis=0))
     return metric.mean(axis=0)
 
 

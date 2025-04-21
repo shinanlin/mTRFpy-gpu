@@ -134,7 +134,7 @@ def covariance_matrices(x, y, lags, zeropad=True, preload=True):
         y = truncate(y, lags[0], lags[-1])
     cov_xx, cov_xy = 0, 0
     for i, (x_i, y_i) in enumerate(zip(x, y)):
-        x_lag = lag_matrix(x_i, lags, zeropad)
+        x_lag = lag_matrix(x_i, lags, zeropad, xp=np)
         if preload is True:
             if i == 0:
                 cov_xx = np.zeros((len(x), x_lag.shape[-1], x_lag.shape[-1]))
@@ -150,7 +150,8 @@ def covariance_matrices(x, y, lags, zeropad=True, preload=True):
     return cov_xx, cov_xy
 
 
-def lag_matrix(x, lags, zeropad=True, bias=True):
+def lag_matrix(x, lags, zeropad=True, bias=True, xp=np):
+    x = xp.asarray(x)
     """
     Construct a matrix with time lagged input features.
     See also 'lagGen' in mTRF-Toolbox github.com/mickcrosse/mTRF-Toolbox.
@@ -174,7 +175,7 @@ def lag_matrix(x, lags, zeropad=True, bias=True):
     n_samples, n_variables = x.shape
     if max(lags) > n_samples:
         raise ValueError("The maximum lag can't be longer than the signal!")
-    lag_matrix = np.zeros((n_samples, n_variables * n_lags))
+    lag_matrix = xp.zeros((n_samples, n_variables * n_lags))
 
     for idx, lag in enumerate(lags):
         col_slice = slice(idx * n_variables, (idx + 1) * n_variables)
@@ -189,7 +190,7 @@ def lag_matrix(x, lags, zeropad=True, bias=True):
         lag_matrix = truncate(lag_matrix, lags[0], lags[-1])
 
     if bias is not False:
-        lag_matrix = np.concatenate([np.ones((lag_matrix.shape[0], 1)), lag_matrix], 1)
+        lag_matrix = xp.concatenate([xp.ones((lag_matrix.shape[0], 1)), lag_matrix], 1)
 
     return lag_matrix
 
