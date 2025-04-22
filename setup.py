@@ -5,14 +5,14 @@ with open("README.md") as f:
     readme = f.read()
 
 # extract version
-with open("mtrf/__init__.py") as file:
+with open("mtrf_gpu/__init__.py") as file:
     for line in file.readlines():
         m = re.match("__version__ *= *['\"](.*)['\"]", line)
         if m:
             version = m.group(1)
 
 setup(
-    name="mtrf",
+    name="mtrf_gpu",
     version=version,
     description="Tools for modeling brain responses using (multivariate)"
     "temporal response functions.",
