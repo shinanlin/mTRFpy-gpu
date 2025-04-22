@@ -216,7 +216,10 @@ class TRF:
                 )
         self.fs, self.regularization = fs, regularization
         lags = list(range(int(xp.floor(tmin * fs)), int(xp.ceil(tmax * fs)) + 1))
-        cov_xx, cov_xy = covariance_matrices(x, y, lags, self.zeropad, preload=False)
+        import time
+        time1 = time.time()
+        cov_xx, cov_xy = covariance_matrices(x, y, lags, self.zeropad, preload=False, xp=self._xp)
+        print(f"[INFO] Covariance computation time: {time.time() - time1:.2f} s")
         regmat = regularization_matrix(cov_xx.shape[1], self.method)
         regmat = xp.asarray(regmat)
         regmat *= regularization / (1 / self.fs)
@@ -225,9 +228,12 @@ class TRF:
         regmat = xp.asarray(regmat)
         cov_xy = xp.asarray(cov_xy)
         # Main GPU/CPU-agnostic computation
+        import time
+        time0 = time.time()
         weight_matrix = xp.matmul(xp.linalg.inv(cov_xx + regmat), cov_xy) / (
             1 / self.fs
         )
+        print(f"[INFO] Computation time: {time.time() - time0:.2f} s")
         self.bias = weight_matrix[0:1]
         if self.bias.ndim == 1:  # add empty dimension for single feature models
             self.bias = xp.expand_dims(self.bias, axis=0)

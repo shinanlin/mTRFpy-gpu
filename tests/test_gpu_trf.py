@@ -2,7 +2,7 @@ import time
 from mtrf.model import TRF
 from mtrf.stats import crossval, nested_crossval
 
-def make_fake_data(n_trials=20, n_samples=500, n_features=8, n_channels=2):
+def make_fake_data(n_trials=100, n_samples=512, n_features=128, n_channels=180):
     import numpy as np
     stimulus = [np.random.randn(n_samples, n_features) for _ in range(n_trials)]
     response = [np.random.randn(n_samples, n_channels) for _ in range(n_trials)]
@@ -10,28 +10,37 @@ def make_fake_data(n_trials=20, n_samples=500, n_features=8, n_channels=2):
 
 def run_test(backend):
     print(f"\nTesting backend: {backend.upper()}")
+    print("[INFO] Generating fake data...")
     stimulus, response = make_fake_data()
-    fs = 100
-    tmin, tmax = -0.1, 0.4
+    print("[INFO] Data generated.")
+    fs = 64
+    tmin, tmax = -0.2, 0.6
     regularization = 1.0
+    
+    print('Data size is' , stimulus[0].shape, response[0].shape)
+    print('FS is', fs)
+    print('Tmin is', tmin)
+    print('Tmax is', tmax)
 
+    print("[INFO] Initializing TRF model...")
     model = TRF(backend=backend)
+    print("[INFO] Starting model.train()...")
     start = time.time()
     model.train(stimulus, response, fs, tmin, tmax, regularization)
-    print(f"Train time: {time.time() - start:.2f} s")
+    print(f"[INFO] Train time: {time.time() - start:.2f} s")
 
-    # Cross-validation
-    start = time.time()
-    metric = crossval(model, stimulus, response, fs, tmin, tmax, regularization, k=2, backend=backend)
-    print(f"Crossval metric: {metric}")
-    print(f"Crossval time: {time.time() - start:.2f} s")
+    # print("[INFO] Starting cross-validation...")
+    # start = time.time()
+    # metric = crossval(model, stimulus, response, fs, tmin, tmax, regularization, k=2, backend=backend)
+    # print(f"[INFO] Crossval metric: {metric}")
+    # print(f"[INFO] Crossval time: {time.time() - start:.2f} s")
 
-    # Nested cross-validation
-    start = time.time()
-    metric_nested, best_reg = nested_crossval(model, stimulus, response, fs, tmin, tmax, [0.1, 1.0, 10.0], k=5, backend=backend)
-    print(f"Nested crossval metric: {metric_nested}, best reg: {best_reg}")
-    print(f"Nested crossval time: {time.time() - start:.2f} s")
+    # print("[INFO] Starting nested cross-validation...")
+    # start = time.time()
+    # metric_nested, best_reg = nested_crossval(model, stimulus, response, fs, tmin, tmax, [0.1, 1.0, 10.0], k=5, backend=backend)
+    # print(f"[INFO] Nested crossval metric: {metric_nested}, best reg: {best_reg}")
+    # print(f"[INFO] Nested crossval time: {time.time() - start:.2f} s")
 
 if __name__ == "__main__":
+    # run_test('gpu')
     run_test('cpu')
-    run_test('gpu')

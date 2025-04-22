@@ -98,7 +98,11 @@ def truncate(x, min_idx, max_idx):
     return x_truncated
 
 
-def covariance_matrices(x, y, lags, zeropad=True, preload=True):
+def covariance_matrices(x, y, lags, zeropad=True, preload=True, xp=None):
+    """Parameters unchanged except:
+    xp: module
+        Numerical backend to use (numpy or cupy). If None, will try to use cupy, falling back to numpy.
+    """
     """
     Compute (auto-)covariance of x and y.
 
@@ -134,11 +138,13 @@ def covariance_matrices(x, y, lags, zeropad=True, preload=True):
         y = truncate(y, lags[0], lags[-1])
     cov_xx, cov_xy = 0, 0
     for i, (x_i, y_i) in enumerate(zip(x, y)):
-        x_lag = lag_matrix(x_i, lags, zeropad, xp=np)
+        x_lag = lag_matrix(x_i, lags, zeropad, xp=xp)
+        x_lag = xp.asarray(x_lag)
+        y_i = xp.asarray(y_i)
         if preload is True:
             if i == 0:
-                cov_xx = np.zeros((len(x), x_lag.shape[-1], x_lag.shape[-1]))
-                cov_xy = np.zeros((len(y), x_lag.shape[-1], y_i.shape[-1]))
+                cov_xx = xp.zeros((len(x), x_lag.shape[-1], x_lag.shape[-1]))
+                cov_xy = xp.zeros((len(y), x_lag.shape[-1], y_i.shape[-1]))
             cov_xx[i] = x_lag.T @ x_lag
             cov_xy[i] = x_lag.T @ y_i
         else:
@@ -146,7 +152,7 @@ def covariance_matrices(x, y, lags, zeropad=True, preload=True):
             cov_xy += x_lag.T @ y_i
     if preload is False:
         cov_xx, cov_xy = cov_xx / len(x), cov_xy / len(x)
-
+    
     return cov_xx, cov_xy
 
 
