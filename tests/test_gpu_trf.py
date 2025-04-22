@@ -2,10 +2,17 @@ import time
 from mtrf.model import TRF
 from mtrf.stats import crossval, nested_crossval
 
-def make_fake_data(n_trials=100, n_samples=512, n_features=128, n_channels=180):
+def make_fake_data(n_trials=80, n_samples=512, n_features=128, n_channels=5):
     import numpy as np
     stimulus = [np.random.randn(n_samples, n_features) for _ in range(n_trials)]
     response = [np.random.randn(n_samples, n_channels) for _ in range(n_trials)]
+    
+    stimulus = np.concatenate(stimulus, axis=0)
+    response = np.concatenate(response, axis=0)
+    
+    stimulus = [stimulus]
+    response = [response]
+    
     return stimulus, response
 
 def run_test(backend):
@@ -13,7 +20,7 @@ def run_test(backend):
     print("[INFO] Generating fake data...")
     stimulus, response = make_fake_data()
     print("[INFO] Data generated.")
-    fs = 64
+    fs = 128
     tmin, tmax = -0.2, 0.6
     regularization = 1.0
     
@@ -42,5 +49,5 @@ def run_test(backend):
     # print(f"[INFO] Nested crossval time: {time.time() - start:.2f} s")
 
 if __name__ == "__main__":
-    # run_test('gpu')
-    run_test('cpu')
+    run_test('gpu')
+    # run_test('cpu')

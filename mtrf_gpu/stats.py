@@ -1,5 +1,5 @@
 from .backend import detect_backend
-from mtrf.matrices import covariance_matrices, regularization_matrix, _check_data, _get_xy
+from mtrf_gpu.matrices import covariance_matrices, regularization_matrix, _check_data, _get_xy
 import numpy as np  # fallback for non-heavy ops
 import random
 import sys

@@ -2,14 +2,14 @@ from pathlib import Path
 from itertools import product
 import pickle
 from collections.abc import Iterable
-from mtrf.stats import (
+from mtrf_gpu.stats import (
     _crossval,
     _progressbar,
     _check_k,
     neg_mse,
     pearsonr,
 )
-from mtrf.matrices import (
+from mtrf_gpu.matrices import (
     covariance_matrices,
     banded_regularization,
     regularization_matrix,
@@ -317,14 +317,117 @@ class TRF:
             return prediction, metric
         else:
             return prediction
-    # ... other methods unchanged for now ...
+        
+    def plot(
+        self,
+        channel=None,
+        feature=None,
+        axes=None,
+        show=True,
+        kind="line",
+    ):
+        """
+        Plot the weights of the (forward) model across time for a select channel or feature.
+        """
+        import numpy as np
+        if plt is None:
+            raise ImportError("matplotlib is required for plotting")
+        weights = self.weights
+        times = self.times
+        if channel is not None and hasattr(weights, 'shape') and weights.shape[-1] > 1:
+            if isinstance(channel, int):
+                weights = weights[..., channel]
+            elif isinstance(channel, str) and channel in ['avg', 'gfp']:
+                if channel == 'avg':
+                    weights = weights.mean(axis=-1)
+                else:
+                    weights = weights.std(axis=-1)
+        if feature is not None and hasattr(weights, 'shape') and weights.shape[0] > 1:
+            if isinstance(feature, int):
+                weights = weights[feature, ...]
+        fig = None
+        if axes is None:
+            fig, ax = plt.subplots()
+        else:
+            ax = axes
+        if kind == "line":
+            ax.plot(times, weights)
+            ax.set(xlabel="Time lag [s]", ylabel="TRF Weights")
+        elif kind == "image":
+            im = ax.imshow(weights.T, origin="lower", aspect="auto", extent=[0, weights.shape[0], 0, weights.shape[1]])
+            ax.set(xlabel="Time lag [s]", ylabel="Feature/Channel", xlim=(times.min(), times.max()))
+            plt.colorbar(im, ax=ax)
+        if show:
+            plt.show()
+        if fig is not None:
+            return fig
+
+    def to_forward(self, response):
+        """
+        Transform a backward to a forward model (Haufe et al. 2014).
+        """
+        import numpy as np
+        _, response, n_trials = _check_data(None, response)
+        stim_pred = self.predict(response=response)
+        Cxx = 0
+        Css = 0
+        trf = self.copy()
+        trf.times = np.asarray([-i for i in reversed(trf.times)])
+        trf.direction = 1
+        for i in range(n_trials):
+            Cxx = Cxx + response[i].T @ response[i]
+            Css = Css + stim_pred[i].T @ stim_pred[i]
+        nStimChan = trf.weights.shape[-1]
+        for i in range(nStimChan):
+            trf.weights[..., i] = Cxx @ self.weights[..., i] / Css[i, i]
+        trf.weights = np.flip(trf.weights.T, axis=1)
+        trf.bias = np.zeros(trf.weights.shape[-1])
+        return trf
+
+    def to_mne_evoked(self, info, include=None, **kwargs):
+        """
+        Output TRF weights as instance(s) of MNE-Python's EvokedArray.
+        """
+        if mne is None:
+            raise ImportError("mne is required for to_mne_evoked")
+        weights = self.weights
+        if self.direction == -1:
+            weights = weights.transpose(2, 1, 0)
+        if isinstance(include, list) or (hasattr(self._xp, 'ndarray') and isinstance(include, self._xp.ndarray)):
+            weights = weights[self._xp.asarray(include), :, :]
+        evokeds = []
+        for w in weights:
+            evoked = mne.EvokedArray(w.T.copy(), info, tmin=self.times[0], **kwargs)
+            evokeds.append(evoked)
+        return evokeds
+
+    def save(self, path):
+        """
+        Save class instance using the pickle format.
+        """
+        path = Path(path)
+        if not path.parent.exists():
+            raise FileNotFoundError(f"The directory {path.parent} does not exist!")
+        with open(path, "wb") as fname:
+            pickle.dump(self, fname, pickle.HIGHEST_PROTOCOL)
+
+    def load(self, path):
+        """
+        Load pickle file - instance variables will be overwritten with file content.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"The file {path} does not exist!")
+        with open(path, "rb") as fname:
+            trf = pickle.load(fname)
+        self.__dict__ = trf.__dict__
 
 
 def load_sample_data(path=None, n_segments=1, normalize=True):
     """
     Load sample of brain responses to naturalistic speech.
 
-    If no path is provided, the data is assumed to be in a folder called mtrf_data
+    If no path is provided, the data is assumed to be in a folder called mtrf_gpu_data
     in the users home directory and will be downloaded and stored there if it can't
     be found. The data contains about 2 minutes of brain responses to naturalistic
     speech, recorded with a 128-channel Biosemi EEG system and the 16-band spectrogram
@@ -334,20 +437,16 @@ def load_sample_data(path=None, n_segments=1, normalize=True):
     ----------
     path: str or pathlib.Path
         Destination where the sample data is stored or will be downloaded to. If None
-        (default), a folder called mtrf_data in the users home directory is assumed
+        (default), a folder called mtrf_gpu_data in the users home directory is assumed
         and created if it does not exist.
 
     Returns
     -------
     stimulus: numpy.ndarray
         Samples-by-features array of the presented speech's spectrogram.
-    response : numpy.ndarray
-        Samples-by-channels array of the recorded neural response.
-    fs: int
-        Sampling rate of stimulus and response in Hz.
     """
     if path is None:  # use default path
-        path = Path.home() / "mtrf_data"
+        path = Path.home() / "mtrf_gpu_data"
         if not path.exists():
             path.mkdir()
     else:
