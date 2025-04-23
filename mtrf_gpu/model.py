@@ -328,47 +328,112 @@ class TRF:
     ):
         """
         Plot the weights of the (forward) model across time for a select channel or feature.
+
+        Arguments:
+            channel (None | int | str): Channel selection. If None, all channels will be used. If an integer, the channel at that index will be used. If 'avg' or 'gfp' , the average or standard deviation across channels will be computed.
+            feature (None | int | str): Feature selection. If None, all features will be used. If an integer, the feature at that index will be used. If 'avg' , the average across features will be computed.
+            axes (matplotlib.axes.Axes): Axis to plot to. If None is provided (default) generate a new plot.
+            show (bool): If True (default), show the plot after drawing.
+            kind (str): Type of plot to draw. If 'line' (default), average the weights across all stimulus features, if 'image' draw a features-by-times plot where the weights are color-coded.
+
+        Returns:
+            fig (matplotlib.figure.Figure): If now axes was provided and a new figure is created, it is returned.
         """
-        import numpy as np
         if plt is None:
-            raise ImportError("matplotlib is required for plotting")
-        weights = self.weights
-        times = self.times
-        if channel is not None and hasattr(weights, 'shape') and weights.shape[-1] > 1:
-            if isinstance(channel, int):
-                weights = weights[..., channel]
-            elif isinstance(channel, str) and channel in ['avg', 'gfp']:
-                if channel == 'avg':
-                    weights = weights.mean(axis=-1)
-                else:
-                    weights = weights.std(axis=-1)
-        if feature is not None and hasattr(weights, 'shape') and weights.shape[0] > 1:
-            if isinstance(feature, int):
-                weights = weights[feature, ...]
-        fig = None
+            raise ModuleNotFoundError("Need matplotlib to plot TRF!")
+        if self.direction == -1:
+            weights = self.weights.T
+            print(
+                "WARNING: decoder weights are hard to interpret, consider using the `to_forward()` method"
+            )
         if axes is None:
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(6, 6))
         else:
-            ax = axes
+            fig, ax = None, axes  # dont create a new figure
+        weights = self.weights
+        # select channel and or feature
+        if weights.shape[0] == 1:
+            feature = 0
+        if weights.shape[-1] == 1:
+            channel = 0
+        if channel is None and feature is None:
+            raise ValueError("You must specify a subset of channels or features!")
+        if feature is not None:
+            image_ylabel = "channel"
+            if isinstance(feature, int):
+                weights = weights[feature, :, :]
+            elif feature == "avg":
+                weights = weights.mean(axis=0)
+            else:
+                raise ValueError('Argument `feature` must be an integer or "avg"!')
+        if channel is not None:
+            image_ylabel = "feature"
+            if isinstance(channel, int):
+                weights = weights.T[channel].T
+            elif channel == "avg":
+                weights = weights.mean(axis=-1)
+            elif channel == "gfp":
+                weights = weights.std(axis=-1)
+            else:
+                raise ValueError(
+                    'Argument `channel` must be an integer, "avg" or "gfp"'
+                )
+            weights = weights.T  # transpose so first dimension is time
+        # plot the result
         if kind == "line":
-            ax.plot(times, weights)
-            ax.set(xlabel="Time lag [s]", ylabel="TRF Weights")
+            ax.plot(
+                self.times.flatten(), weights, linewidth=2 - 0.01 * weights.shape[-1]
+            )
+            ax.set(
+                xlabel="Time lag[s]",
+                ylabel="Amplitude [a.u.]",
+                xlim=(self.times.min(), self.times.max()),
+            )
         elif kind == "image":
-            im = ax.imshow(weights.T, origin="lower", aspect="auto", extent=[0, weights.shape[0], 0, weights.shape[1]])
-            ax.set(xlabel="Time lag [s]", ylabel="Feature/Channel", xlim=(times.min(), times.max()))
-            plt.colorbar(im, ax=ax)
-        if show:
+            scale = self.times.max() / len(self.times)
+            im = ax.imshow(
+                weights.T,
+                origin="lower",
+                aspect="auto",
+                extent=[0, weights.shape[0], 0, weights.shape[1]],
+            )
+            extent = np.asarray(im.get_extent(), dtype=float)
+            extent[:2] *= scale
+            im.set_extent(extent)
+            ax.set(
+                xlabel="Time lag [s]",
+                ylabel=image_ylabel,
+                xlim=(self.times.min(), self.times.max()),
+            )
+        if show is True:
             plt.show()
         if fig is not None:
             return fig
 
     def to_forward(self, response):
         """
-        Transform a backward to a forward model (Haufe et al. 2014).
+        Transform a backward to a forward model.
+
+        Use the method described in Haufe et al. 2014 to transform the weights of
+        a backward model into coefficients reflecting forward activation patterns
+        which have a clearer physiological interpretation.
+
+        Parameters
+        ----------
+        response: list or numpy.ndarray
+            response data which was used to train the backward model as single
+            trial in a samples-by-channels array or list of multiple trials.
+
+        Returns
+        -------
+        trf: model.TRF
+            New TRF instance with the transformed forward weights
         """
-        import numpy as np
+        assert self.direction == -1
+
         _, response, n_trials = _check_data(None, response)
         stim_pred = self.predict(response=response)
+
         Cxx = 0
         Css = 0
         trf = self.copy()
@@ -380,6 +445,7 @@ class TRF:
         nStimChan = trf.weights.shape[-1]
         for i in range(nStimChan):
             trf.weights[..., i] = Cxx @ self.weights[..., i] / Css[i, i]
+
         trf.weights = np.flip(trf.weights.T, axis=1)
         trf.bias = np.zeros(trf.weights.shape[-1])
         return trf
@@ -387,17 +453,57 @@ class TRF:
     def to_mne_evoked(self, info, include=None, **kwargs):
         """
         Output TRF weights as instance(s) of MNE-Python's EvokedArray.
+
+        Create one instance of ``mne.EvokedArray`` for each feature along the first
+        (i.e. input) dimension of ``self.weights``. When using a backward model,
+        the weights are transposed to obtain one EvokedArray per decoded feature.
+        See the MNE-Python documentation for details on the Evoked class.
+
+        Parameters
+        ----------
+        info: mne.Info or mne.channels.montage.DigMontage
+            Either a basic info or montage containing channel locations
+            Information neccessary to build the EvokedArray.
+        include: None or in or list
+            Indices of the stimulus features to include. If None (default),
+            create one Evoked object for each feature.
+        kwargs: dict
+            other parameters for constructing the EvokedArray
+
+        Returns
+        -------
+        evokeds: list
+            One Evoked instance for each included TRF feature.
         """
-        if mne is None:
-            raise ImportError("mne is required for to_mne_evoked")
-        weights = self.weights
+        import numpy as np
+        if mne is False:
+            raise ModuleNotFoundError("To use this function, mne must be installed!")
         if self.direction == -1:
-            weights = weights.transpose(2, 1, 0)
-        if isinstance(include, list) or (hasattr(self._xp, 'ndarray') and isinstance(include, self._xp.ndarray)):
-            weights = weights[self._xp.asarray(include), :, :]
+            weights = self.weights.T
+        else:
+            weights = self.weights
+        if isinstance(info, mne.channels.montage.DigMontage):
+            kinds = [d["kind"] for d in info.copy().remove_fiducials().dig]
+            ch_types = []
+            for k in kinds:
+                if "eeg" in str(k).lower():
+                    ch_types.append("eeg")
+                if "mag" in str(k).lower():
+                    ch_types.append("mag")
+                if "grad" in str(k).lower():
+                    ch_types.append("grad")
+            mne_info = mne.create_info(info.ch_names, self.fs, ch_types)
+        elif isinstance(info, mne.Info):
+            mne_info = info
+        else:
+            raise ValueError
+        if isinstance(include, list) or isinstance(include, np.ndarray):
+            weights = weights[np.asarray(include), :, :]
         evokeds = []
         for w in weights:
-            evoked = mne.EvokedArray(w.T.copy(), info, tmin=self.times[0], **kwargs)
+            evoked = mne.EvokedArray(w.T.copy(), mne_info, tmin=self.times[0], **kwargs)
+            if isinstance(info, mne.channels.montage.DigMontage):
+                evoked.set_montage(info)
             evokeds.append(evoked)
         return evokeds
 
