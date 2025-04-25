@@ -77,6 +77,28 @@ class TRF:
         self._xp, self.backend = detect_backend(backend)
         print(f"[TRF] Using backend: {self.backend.upper()} ({self._xp.__name__})")
 
+    def __radd__(self, trf):
+        if trf == 0:
+            return self.copy()
+        else:
+            return self.__add__(trf)
+
+    def __add__(self, trf):
+        if not isinstance(trf, TRF):
+            raise TypeError("Can only add to another TRF instance!")
+        if not (self.direction == trf.direction) and (self.kind == trf.kind):
+            raise ValueError("Added TRFs must be of same kind and direction!")
+        trf_new = self.copy()
+        trf_new.weights += trf.weights
+        trf_new.bias += trf.bias
+        return trf_new
+
+    def __truediv__(self, num):
+        trf_new = self.copy()
+        trf_new.weights /= num
+        trf_new.bias /= num
+        return trf_new
+
 
     def copy(self):
         """Return a copy of the TRF instance, preserving backend attributes."""

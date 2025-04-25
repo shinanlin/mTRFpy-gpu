@@ -196,7 +196,108 @@ def _crossval(
         print('[GPU] _crossval: metric_test:', metric_test)
         metric[isplit] = metric_test
     print('[GPU] _crossval: metric mean:', metric.mean(axis=0))
-    return metric.mean(axis=0)
+    return metric
+
+def permutation_distribution(
+    model,
+    stimulus,
+    response,
+    fs,
+    tmin,
+    tmax,
+    regularization,
+    n_permute,
+    k=-1,
+    seed=None,
+    average=True,
+    verbose=True,
+):
+    """
+    Estimate the distribution of correlation coefficients and mean squared error
+    under random permutation.
+
+    For each permutation, stimulus and response trials are randomly shuffled and
+    split into `k` segments. Then `k-1` segments are used to train and the remaining
+    segment is used to test the model. The resulting permutation distribution reflects
+    the expected correlation and error if there is no causal relationship between
+    stimulus and response. To save time, the models are computed for all possible
+    combinations of response and stimulus and then sampled and averaged during
+    permutation.
+
+    Parameters
+    ----------
+    model: model.TRF
+        Base model used for cross-validation.
+    stimulus: list
+        Each element must contain one trial's stimulus in a two-dimensional
+        samples-by-features array (second dimension can be omitted if there is
+        only a single feature.
+    response: list
+        Each element must contain one trial's response in a two-dimensional
+        samples-by-channels array.
+    fs: int
+        Sample rate of stimulus and response in hertz.
+    tmin: float
+        Minimum time lag in seconds.
+    tmax: float
+        Maximum time lag in seconds.
+    regularization: float or int
+        Value for the lambda parameter regularizing the regression.
+    k: int
+        Number of data splits, if -1, do leave-one-out cross-validation.
+    seed: int
+        Seed for the random number generator.
+    average: bool or list or numpy.ndarray
+        If True (default), average metric across all predicted features (e.g. channels
+        in the case of forward modelling). If `average` is an array of indices only
+        average the metric for those features. If `False`, return each feature's metric.
+    Returns
+    -------
+    metric: float or numpy.ndarray
+        Metric as computed by the metric function in  the attribute `model.metric`
+        for each permutation.
+    """
+    if seed:
+        np.random.seed(seed)
+    stimulus, response, n_trials = _check_data(stimulus, response, min_len=2, crop=True)
+    x, y, tmin, tmax = _get_xy(stimulus, response, tmin, tmax, model.direction)
+    min_len = min([len(x_i) for x_i in x])
+    for i in range(len(x)):
+        x[i], y[i] = x[i][:min_len], y[i][:min_len]
+    k = _check_k(k, n_trials)
+    idx = np.arange(n_trials)
+    combinations = np.transpose(np.meshgrid(idx, idx)).reshape(-1, 2)
+    models = []
+    for c in _progressbar(combinations, "Preparing models", verbose=verbose):
+        trf = model.copy()
+        trf.train(stimulus[c[0]], response[c[1]], fs, tmin, tmax, regularization)
+        models.append(trf)
+    metric = np.zeros(n_permute)
+    for iperm in _progressbar(range(n_permute), "Permuting", verbose=verbose):
+        idx = []
+        for i in range(len(x)):  # make sure each x only appears once
+            idx.append(random.choice(np.where(combinations[:, 0] == i)[0]))
+        random.shuffle(idx)
+        idx = np.array_split(idx, k)
+        perm_metric = []
+        for isplit in range(len(idx)):
+            idx_val = idx[isplit]
+            idx_train = np.concatenate(idx[:isplit] + idx[isplit + 1 :])
+            perm_model = np.mean([models[i] for i in idx_train])
+            stimulus_val = [stimulus[combinations[i][0]] for i in idx_val]
+            response_val = [response[combinations[i][1]] for i in idx_val]
+            _, fold_metric = perm_model.predict(
+                stimulus_val, response_val, None, average
+            )
+            perm_metric.append(fold_metric)
+        # Use CuPy mean if perm_metric contains CuPy arrays, else NumPy
+        if hasattr(perm_metric[0], 'get'):
+            import cupy as cp
+            metric[iperm] = cp.mean(cp.stack(perm_metric))
+        else:
+            metric[iperm] = np.mean(perm_metric)
+
+    return metric
 
 
 def nested_crossval(
