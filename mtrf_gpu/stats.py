@@ -92,7 +92,7 @@ def crossval(
     stimulus, response, _ = _check_data(stimulus, response, min_len=2)
     x, y, tmin, tmax = _get_xy(stimulus, response, tmin, tmax, model.direction)
     lags = list(range(int(xp.floor(tmin * fs)), int(xp.ceil(tmax * fs)) + 1))
-    cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad, trf.preload)
+    cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad, trf.preload, xp=xp)
     metric = _crossval(
         model,
         x,
@@ -169,7 +169,7 @@ def _crossval(
             x_train = [x[i] for i in idx_train]
             y_train = [y[i] for i in idx_train]
             cov_xx_hat, cov_xy_hat = covariance_matrices(
-                x_train, y_train, lags, model.zeropad, preload=False
+                x_train, y_train, lags, model.zeropad, preload=False, xp=xp
             )
         else:
             cov_xx_hat = cov_xx[idx_train].mean(axis=0)
@@ -234,7 +234,7 @@ def nested_crossval(
         ]
     # Preload covariance if needed
     if model.preload:
-        cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad)
+        cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad, xp=xp)
     else:
         cov_xx, cov_xy = None, None
     splits = xp.arange(n_trials)
