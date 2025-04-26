@@ -197,7 +197,7 @@ class TRF:
             cov_xx, cov_xy = None, None
             if self.preload:
                 cov_xx, cov_xy = covariance_matrices(
-                    x, y, lags, self.zeropad, self.preload
+                    x, y, lags, self.zeropad, self.preload, xp=xp
                 )
             else:
                 cov_xx, cov_xy = None, None

@@ -3,9 +3,9 @@
 #SBATCH --output=log/test_gpu_trf.out
 #SBATCH --error=log/test_gpu_trf.err
 #SBATCH --time=20:00:00
-#SBATCH --mem=200G
-#SBATCH --partition=gpu-common
-#SBATCH --gres=gpu:2
+#SBATCH --mem=12G
+#SBATCH --partition=coganlab-gpu
+#SBATCH --gres=gpu:1
 
 # DCC GPU manual: https://dcc.duke.edu/dcc/partitions/?h=gpu#gpus
 

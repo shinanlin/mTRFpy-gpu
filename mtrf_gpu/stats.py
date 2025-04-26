@@ -272,7 +272,7 @@ def permutation_distribution(
         trf = model.copy()
         trf.train(stimulus[c[0]], response[c[1]], fs, tmin, tmax, regularization)
         models.append(trf)
-    metric = np.zeros(n_permute)
+    metric = []
     for iperm in _progressbar(range(n_permute), "Permuting", verbose=verbose):
         idx = []
         for i in range(len(x)):  # make sure each x only appears once
@@ -293,9 +293,9 @@ def permutation_distribution(
         # Use CuPy mean if perm_metric contains CuPy arrays, else NumPy
         if hasattr(perm_metric[0], 'get'):
             import cupy as cp
-            metric[iperm] = cp.mean(cp.stack(perm_metric))
+            metric.append(cp.stack(perm_metric))
         else:
-            metric[iperm] = np.mean(perm_metric)
+            metric.append(np.stack(perm_metric))
 
     return metric
 
