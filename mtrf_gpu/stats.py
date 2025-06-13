@@ -92,7 +92,10 @@ def crossval(
     stimulus, response, _ = _check_data(stimulus, response, min_len=2)
     x, y, tmin, tmax = _get_xy(stimulus, response, tmin, tmax, model.direction)
     lags = list(range(int(xp.floor(tmin * fs)), int(xp.ceil(tmax * fs)) + 1))
-    cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad, trf.preload, xp=xp)
+    if model.preload:
+        cov_xx, cov_xy = covariance_matrices(x, y, lags, model.zeropad, model.preload, xp=xp)
+    else:
+        cov_xx, cov_xy = None, None
     metric = _crossval(
         model,
         x,
@@ -135,20 +138,15 @@ def _crossval(
     regmat = regularization_matrix(reg_mat_size, model.method)
     regmat = xp.asarray(regmat)
     regmat *= regularization / (1 / fs)
-    print('[GPU] _crossval: regmat shape:', regmat.shape)
-    print('[GPU] _crossval: cov_xx shape:', cov_xx.shape if cov_xx is not None else None)
-    print('[GPU] _crossval: cov_xy shape:', cov_xy.shape if cov_xy is not None else None)
 
     n_trials = len(x)
     k = int(k)
-    # print(f"[DEBUG] n_trials: {n_trials}, k: {k}")
     k = min(k, n_trials) if k > 0 else n_trials
     splits = xp.arange(n_trials)
     if hasattr(xp, "asnumpy"):
         splits = xp.asnumpy(splits)
     random.shuffle(splits)
     splits = np.array_split(splits, k)
-    print('[GPU] _crossval: splits:', splits)
 
     if average is True:
         metric = xp.zeros(k)
@@ -156,26 +154,26 @@ def _crossval(
         metric = xp.zeros((k, y[0].shape[-1]))
 
     for isplit in range(len(splits)):
-        # print(f"[DEBUG] isplit: {isplit}")
-        # print(f"[DEBUG] splits: {splits}")
         train_splits = [splits[j] for j in range(len(splits)) if j != isplit]
-        # print(f"[DEBUG] train_splits (len={len(train_splits)}): {train_splits}")
         if len(train_splits) == 0:
-            # print(f"[WARNING] No training splits for isplit={isplit}, skipping this split.")
             continue
         idx_val = splits[isplit]
         idx_train = np.concatenate(train_splits)
         if cov_xx is None:
+            
             x_train = [x[i] for i in idx_train]
             y_train = [y[i] for i in idx_train]
+            
             cov_xx_hat, cov_xy_hat = covariance_matrices(
                 x_train, y_train, lags, model.zeropad, preload=False, xp=xp
             )
         else:
             cov_xx_hat = cov_xx[idx_train].mean(axis=0)
             cov_xy_hat = cov_xy[idx_train].mean(axis=0)
+        
         cov_xx_hat = xp.asarray(cov_xx_hat)
         cov_xy_hat = xp.asarray(cov_xy_hat)
+        
         w = xp.matmul(xp.linalg.inv(cov_xx_hat + regmat), cov_xy_hat) / (1 / fs)
         trf = model.copy()
         trf.times, trf.bias, trf.fs = xp.array(lags) / fs, w[0:1], fs
@@ -188,14 +186,10 @@ def _crossval(
         # because we are working with covariance matrices, we have to check direction
         # to pass the right variable as stimulus and response to TRF.predict
         if model.direction == 1:
-            print('[GPU] _crossval: Predicting with x_test[0] shape:', x_test[0].shape, 'y_test[0] shape:', y_test[0].shape)
             _, metric_test = trf.predict(x_test, y_test, None, average)
         elif model.direction == -1:
-            print('[GPU] _crossval: Predicting with y_test[0] shape:', y_test[0].shape, 'x_test[0] shape:', x_test[0].shape)
             _, metric_test = trf.predict(y_test, x_test, None, average)
-        print('[GPU] _crossval: metric_test:', metric_test)
         metric[isplit] = metric_test
-    print('[GPU] _crossval: metric mean:', metric.mean(axis=0))
     return metric
 
 def permutation_distribution(
